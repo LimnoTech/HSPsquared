@@ -19,11 +19,8 @@ Networkx and matplotlib.)
 legacy WDM and UCI files to HDF5 files for HSP2, and to provide additional new
 and legacy capabilities.
 
-The remaining directories are versions of Tim Cera's open source code
-(wdmtoolbox, tstoolbox, and hspfbintoolbox) with versions tested to work with
-HSP2 and other open source code required by Tim Cera's modules.  It is expected
-that these will not be needed in the future when current versions have been
-proven to work.
+Early version of this library used Tim Cera's open source code for HSPF
+(i.e. [wdmtoolbox](https://github.com/timcera/wdmtoolbox), [tstoolbox](https://github.com/timcera/tstoolbox), and [hspfbintoolbox](https://github.com/timcera/hspfbintoolbox), see https://github.com/respec/HSPsquared/tree/c259f32cc927402ce8506e4243c9b54091b9a446), but they have since been deleted from this repo, likely after the HSP2 versions were proven to work.
 
 
 INSTALLATION INSTRUCTIONS
