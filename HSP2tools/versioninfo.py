@@ -33,7 +33,7 @@ def versions():
             'NUMPY': numpy.__version__,
             'PANDAS': pandas.__version__,
             'PYTABLES': tables.__version__,
-            'WDMTOOLBOX': wdmtoolbox.__version__,  # doesn't provide version info - yet
+            #'WDMTOOLBOX': wdmtoolbox.__version__,  # doesn't provide version info - yet
 
             '   ':'',               # spacer
             'os': platform.platform(),
