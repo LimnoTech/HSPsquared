@@ -20,8 +20,13 @@ legacy WDM and UCI files to HDF5 files for HSP2, and to provide additional new
 and legacy capabilities.
 
 Early version of this library used Tim Cera's open source code for HSPF
-(i.e. [wdmtoolbox](https://github.com/timcera/wdmtoolbox), [tstoolbox](https://github.com/timcera/tstoolbox), and [hspfbintoolbox](https://github.com/timcera/hspfbintoolbox), see https://github.com/respec/HSPsquared/tree/c259f32cc927402ce8506e4243c9b54091b9a446), but they have since been deleted from this repo, likely after the HSP2 versions were proven to work.
+(i.e. wdmtoolbox_, tstoolbox_, and hspfbintoolbox_; see commit c259f32_), but they 
+have since been deleted from this repo, likely after the HSP2 versions were proven to work.
 
+.. _wdmtoolbox: https://github.com/timcera/wdmtoolbox
+.. _tstoolbox: https://github.com/timcera/tstoolbox
+.. _hspfbintoolbox: https://github.com/timcera/hspfbintoolbox
+.. _c259f32: https://github.com/respec/HSPsquared/tree/c259f32cc927402ce8506e4243c9b54091b9a446
 
 INSTALLATION INSTRUCTIONS
 =========================
