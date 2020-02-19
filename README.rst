@@ -33,29 +33,6 @@ INSTALLATION INSTRUCTIONS
 
 The installation instructions have been revised to utilize an environment.yml file to help with setting up you python 2.7 environment. Please reference the [Set up & Installation](https://github.com/LimnoTech/HSPsquared/wiki/Set-up-&-Installation) wiki page for installation instructions. 
 
-~~Install Python 2.7 and the additional scientific, open source libraries.
-Ananconda (formerly Continuum Analytics) and Enthought provide free, simple
-installation of all the required Python and scientific libraries.  Check that
-numpy, Pandas, matplotlib, and numba are loaded.  Qgrid (version > 1.0) is also
-used in some of the Jupyter notebook tutorials.  Qgrid is a Jupyter notebook
-widget which uses SlickGrid to render pandas DataFrames within a Jupyter
-notebook. This allows you to explore your DataFrames with intuitive scrolling,
-sorting, and filtering controls, as well as edit your DataFrames by double
-clicking cells.The package managers included with Anaconda or Enthought's
-downloads makes this easy to check and add any missing packages.
-
-From this Github site, click on the green "Clone or Download" dropdown button
-to select "Download ZIP".  Unzip the downloaded zipfile (in your Windows
-"Downloads" directory) and move it  to a convenient location such as your
-Desktop. You should now be able to run the Tutorials and create your own
-Jupyter Notebooks in this directory.
-
-IF AND ONLY IF you need to run HSP2 outside of the distribution directory, you
-will need to use the Windows utility to edit your environmental variables. Find
-or create the PYTHONPATH environmental variable and add the path to where you
-placed the unzipped HSP2 distribution - remember to add the final backslash to
-the path. For example: "C:\Users\myusername\Desktop\HSPsquared\". ~~
-
 TUTORIALS and JUPYTER NOTEBOOKS
 ===============================
 You should be able to start the Tutorials and other Jupyter Notebooks once you
