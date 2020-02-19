@@ -30,7 +30,10 @@ have since been deleted from this repo, likely after the HSP2 versions were prov
 
 INSTALLATION INSTRUCTIONS
 =========================
-Install Python 2.7 and the additional scientific, open source libraries.
+
+The installation instructions have been revised to utilize an environment.yml file to help with setting up you python 2.7 environment. Please reference the [Set up & Installation](https://github.com/LimnoTech/HSPsquared/wiki/Set-up-&-Installation) wiki page for installation instructions. 
+
+~~Install Python 2.7 and the additional scientific, open source libraries.
 Ananconda (formerly Continuum Analytics) and Enthought provide free, simple
 installation of all the required Python and scientific libraries.  Check that
 numpy, Pandas, matplotlib, and numba are loaded.  Qgrid (version > 1.0) is also
@@ -51,8 +54,7 @@ IF AND ONLY IF you need to run HSP2 outside of the distribution directory, you
 will need to use the Windows utility to edit your environmental variables. Find
 or create the PYTHONPATH environmental variable and add the path to where you
 placed the unzipped HSP2 distribution - remember to add the final backslash to
-the path. For example: "C:\Users\myusername\Desktop\HSPsquared\". 
-
+the path. For example: "C:\Users\myusername\Desktop\HSPsquared\". ~~
 
 TUTORIALS and JUPYTER NOTEBOOKS
 ===============================
