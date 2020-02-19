@@ -31,7 +31,9 @@ have since been deleted from this repo, likely after the HSP2 versions were prov
 INSTALLATION INSTRUCTIONS
 =========================
 
-The installation instructions have been revised to utilize an environment.yml file to help with setting up you python 2.7 environment. Please reference the [Set up & Installation](https://github.com/LimnoTech/HSPsquared/wiki/Set-up-&-Installation) wiki page for installation instructions. 
+The installation instructions have been revised to utilize an environment.yml file to help with setting up you python 2.7 environment. Please reference the installation_  wiki page for installation instructions. 
+
+.. _installation: https://github.com/LimnoTech/HSPsquared/wiki/Set-up-&-Installation
 
 TUTORIALS and JUPYTER NOTEBOOKS
 ===============================
