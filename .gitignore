@@ -30,3 +30,7 @@ __pycache__/*
 .tox/*
 stats.dat
 .ropeproject
+tests/GLWACSO/2017Run/*
+tests/GLWACSO/HSPF_Output/*
+tests/GLWACSO/RCHRES_Table.csv
+tests/GLWACSO/Notebooks/*
