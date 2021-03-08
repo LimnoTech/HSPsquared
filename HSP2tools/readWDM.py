@@ -7,283 +7,316 @@ License: LGPL2
 
 import numpy as np
 import pandas as pd
-from numba import jit, njit
+#from numba import jit, njit
 import datetime
 from dateutil.relativedelta import relativedelta
 import timeit
 
-# look up attributes NAME, data type (Integer; Real; String) and data length by attribute number
-attrinfo = {1:('TSTYPE','S',4),     2:('STAID','S',16),    11:('DAREA','R',1),
-           17:('TCODE','I',1),     27:('TSBYR','I',1),     28:('TSBMO','I',1),
-           29:('TSBDY','I',1),     30:('TSBHR','I',1),     32:('TFILL', 'R',1),
-           33:('TSSTEP','I',1),    34:('TGROUP','I',1),    45:('STNAM','S',48),
-           83:('COMPFG','I',1),    84:('TSFORM','I',1),    85:('VBTIME','I',1),
-          444:('DATMOD','S',12),  443:('DATCRE','S',12),   22:('DCODE','I',1),
-           10:('DESCRP','S', 80),   7:('ELEV','R',1),       8:('LATDEG','R',1),
-            9:('LNGDEG','R',1),   288:('SCENARIO','S',8), 289:('CONSTITUENT','S',8),
-          290:('LOCATION','S',8)}
+class WDMReader:
 
-freq = {7:'100YS', 6:'YS', 5:'MS', 4:'D', 3:'H', 2:'min', 1:'S'}   # pandas date_range() frequency by TCODE, TGROUP
+    attrinfo = {}
+    freq ={}
+
+    def __init__(self, wdmfile):
+        self.wdmfile = wdmfile
+        # look up attributes NAME, data type (Integer; Real; String) and data length by attribute number
+        self.attrinfo = {1:('TSTYPE','S',4),     2:('STAID','S',16),    11:('DAREA','R',1),
+                17:('TCODE','I',1),     27:('TSBYR','I',1),     28:('TSBMO','I',1),
+                29:('TSBDY','I',1),     30:('TSBHR','I',1),     32:('TFILL', 'R',1),
+                33:('TSSTEP','I',1),    34:('TGROUP','I',1),    45:('STNAM','S',48),
+                83:('COMPFG','I',1),    84:('TSFORM','I',1),    85:('VBTIME','I',1),
+                444:('DATMOD','S',12),  443:('DATCRE','S',12),   22:('DCODE','I',1),
+                10:('DESCRP','S', 80),   7:('ELEV','R',1),       8:('LATDEG','R',1),
+                    9:('LNGDEG','R',1),   288:('SCENARIO','S',8), 289:('CONSTITUENT','S',8),
+                290:('LOCATION','S',8)}
+
+        self.freq = {7:'100YS', 6:'YS', 5:'MS', 4:'D', 3:'H', 2:'min', 1:'S'}   # pandas date_range() frequency by TCODE, TGROUP
 
 
-def readWDM(wdmfile, hdffile, compress_output=True):
-    iarray = np.fromfile(wdmfile, dtype=np.int32)
-    farray = np.fromfile(wdmfile, dtype=np.float32)
+    def readWDM(self, wdmfile, hdffile, compress_output=True):
+        iarray = np.fromfile(wdmfile, dtype=np.int32)
+        farray = np.fromfile(wdmfile, dtype=np.float32)
 
-    if iarray[0] != -998:
-        raise ValueError ('Provided file does not match WDM format. First int32 should be -998.')
-    nrecords    = iarray[28]    # first record is File Definition Record
-    ntimeseries = iarray[31]
+        if iarray[0] != -998:
+            raise ValueError ('Provided file does not match WDM format. First int32 should be -998.')
+        nrecords    = iarray[28]    # first record is File Definition Record
+        ntimeseries = iarray[31]
 
-    dsnlist = []
-    for index in range(512, nrecords * 512, 512):
-        if not (iarray[index]==0 and iarray[index+1]==0 and iarray[index+2]==0 and iarray[index+3]==0) and iarray[index+5]==1:
-            dsnlist.append(index)
-    if len(dsnlist) != ntimeseries:
-        raise RuntimeError (f'Wrong number of Time Series Records found expecting:{ntimeseries} found:{len(dsnlist)}')
+        dsnlist = []
+        for index in range(512, nrecords * 512, 512):
+            if not (iarray[index]==0 and iarray[index+1]==0 and iarray[index+2]==0 and iarray[index+3]==0) and iarray[index+5]==1:
+                dsnlist.append(index)
+        if len(dsnlist) != ntimeseries:
+            raise RuntimeError (f'Wrong number of Time Series Records found expecting:{ntimeseries} found:{len(dsnlist)}')
 
-    with pd.HDFStore(hdffile) as store:
-        summary = []
-        summaryindx = []
+        with pd.HDFStore(hdffile) as store:
+            summary = []
+            summaryindx = []
 
-        # check to see which extra attributes are on each dsn
-        columns_to_add = []
-        search = ['STAID', 'STNAM', 'SCENARIO', 'CONSTITUENT', 'LOCATION']
-        for att in search:
-            found_in_all = True
+            # check to see which extra attributes are on each dsn
+            columns_to_add = []
+            search = ['STAID', 'STNAM', 'SCENARIO', 'CONSTITUENT', 'LOCATION']
+            for att in search:
+                found_in_all = True
+                for index in dsnlist:
+                    dattr = {}
+                    psa = iarray[index + 9]
+                    if psa > 0:
+                        sacnt = iarray[index + psa - 1]
+                    for i in range(psa + 1, psa + 1 + 2 * sacnt, 2):
+                        id = iarray[index + i]
+                        ptr = iarray[index + i + 1] - 1 + index
+                        if id not in self.attrinfo:
+                            continue
+                        name, atype, length = self.attrinfo[id]
+                        if atype == 'I':
+                            dattr[name] = iarray[ptr]
+                        elif atype == 'R':
+                            dattr[name] = farray[ptr]
+                        else:
+                            dattr[name] = ''.join([WDMReader._inttostr(iarray[k]) for k in range(ptr, ptr + length // 4)]).strip()
+                    if att not in dattr:
+                        found_in_all = False
+                if found_in_all:
+                    columns_to_add.append(att)
+
             for index in dsnlist:
-                dattr = {}
-                psa = iarray[index + 9]
+                # get layout information for TimeSeries Dataset frame
+                dsn   = iarray[index+4]
+                psa   = iarray[index+9]
                 if psa > 0:
-                    sacnt = iarray[index + psa - 1]
-                for i in range(psa + 1, psa + 1 + 2 * sacnt, 2):
+                    sacnt = iarray[index+psa-1]
+                pdat  = iarray[index+10]
+                pdatv = iarray[index+11]
+                frepos = iarray[index+pdat]
+
+                print(f'{dsn} reading from wdm')
+                # get attributes
+                dattr = {'TSBDY':1, 'TSBHR':1, 'TSBMO':1, 'TSBYR':1900, 'TFILL':-999.}   # preset defaults
+                for i in range(psa+1, psa+1 + 2*sacnt, 2):
                     id = iarray[index + i]
                     ptr = iarray[index + i + 1] - 1 + index
-                    if id not in attrinfo:
+                    if id not in self.attrinfo:
+                        # print('PROGRAM ERROR: ATTRIBUTE INDEX not found', id, 'Attribute pointer', iarray[index + i+1])
                         continue
-                    name, atype, length = attrinfo[id]
+
+                    name, atype, length = self.attrinfo[id]
                     if atype == 'I':
                         dattr[name] = iarray[ptr]
                     elif atype == 'R':
                         dattr[name] = farray[ptr]
                     else:
-                        dattr[name] = ''.join([_inttostr(iarray[k]) for k in range(ptr, ptr + length // 4)]).strip()
-                if att not in dattr:
-                    found_in_all = False
-            if found_in_all:
-                columns_to_add.append(att)
+                        dattr[name] = ''.join([WDMReader._inttostr(iarray[k]) for k in range(ptr, ptr + length//4)]).strip()
 
-        for index in dsnlist:
-            # get layout information for TimeSeries Dataset frame
-            dsn   = iarray[index+4]
-            psa   = iarray[index+9]
-            if psa > 0:
-                sacnt = iarray[index+psa-1]
-            pdat  = iarray[index+10]
-            pdatv = iarray[index+11]
-            frepos = iarray[index+pdat]
+                # Get timeseries timebase data
+                records = [] 
+                offsets = []
+                for i in range(pdat+1, pdatv-1):
+                    a = iarray[index+i]
+                    if a != 0:
+                        record, offset = WDMReader._splitposition(a)
+                        records.append(record)
+                        offsets.append(offset)
+                if len(records) == 0:
+                    continue   
 
-            print(f'{dsn} reading from wdm')
-            # get attributes
-            dattr = {'TSBDY':1, 'TSBHR':1, 'TSBMO':1, 'TSBYR':1900, 'TFILL':-999.}   # preset defaults
-            for i in range(psa+1, psa+1 + 2*sacnt, 2):
-                id = iarray[index + i]
-                ptr = iarray[index + i + 1] - 1 + index
-                if id not in attrinfo:
-                    # print('PROGRAM ERROR: ATTRIBUTE INDEX not found', id, 'Attribute pointer', iarray[index + i+1])
-                    continue
+                # calculate number of data points in each group, tindex is final index for storage
+                tgroup = dattr['TGROUP']
+                tstep  = dattr['TSSTEP']
+                tcode  = dattr['TCODE']
 
-                name, atype, length = attrinfo[id]
-                if atype == 'I':
-                    dattr[name] = iarray[ptr]
-                elif atype == 'R':
-                    dattr[name] = farray[ptr]
+                records = np.asarray(records)
+                offsets = np.asarray(offsets)
+                dates, values = self._process_groups(iarray, farray, records, offsets, tgroup)
+                series = pd.Series(values, index=dates)
+                index = series.index.to_series()
+                series.index = index.apply(lambda x: datetime.datetime(*WDMReader.bits_to_date(x)))
+
+                dsname = f'TIMESERIES/TS{dsn:03d}'
+                if compress_output:
+                    series.to_hdf(store, dsname, complib='blosc', complevel=9)  
                 else:
-                    dattr[name] = ''.join([_inttostr(iarray[k]) for k in range(ptr, ptr + length//4)]).strip()
+                    series.to_hdf(store, dsname, format='t', data_columns=True)
 
-            # Get timeseries timebase data
-            records = [] 
-            offsets = []
-            for i in range(pdat+1, pdatv-1):
-                a = iarray[index+i]
-                if a != 0:
-                    record, offset = _splitposition(a)
-                    records.append(record)
-                    offsets.append(offset)
-            if len(records) == 0:
-                continue   
+                data = [
+                    str(series.index[0]), str(series.index[-1]), str(tstep) + self.freq[tcode],
+                    len(series),  dattr['TSTYPE'], dattr['TFILL']
+                    ]
+                columns = ['Start', 'Stop', 'Freq','Length', 'TSTYPE', 'TFILL']
+                for x in columns_to_add:
+                    if x in dattr:
+                        data.append(dattr[x])
+                        columns.append(x)
 
-            # calculate number of data points in each group, tindex is final index for storage
-            tgroup = dattr['TGROUP']
-            tstep  = dattr['TSSTEP']
-            tcode  = dattr['TCODE']
+                summary.append(data)
+                summaryindx.append(dsname[11:])
 
-            records = np.asarray(records)
-            offsets = np.asarray(offsets)
-            dates, values = _process_groups(iarray, farray, records, offsets, tgroup)
-            series = pd.Series(values, index=dates)
-            index = series.index.to_series()
-            series.index = index.apply(lambda x: datetime.datetime(*bits_to_date(x)))
+            dfsummary = pd.DataFrame(summary, index=summaryindx, columns=columns)
+            store.put('TIMESERIES/SUMMARY',dfsummary, format='t', data_columns=True)
+        return dfsummary
 
-            dsname = f'TIMESERIES/TS{dsn:03d}'
-            if compress_output:
-                series.to_hdf(store, dsname, complib='blosc', complevel=9)  
-            else:
-                series.to_hdf(store, dsname, format='t', data_columns=True)
+    def WriteHD5(self, hdffile):
+        pass
 
-            data = [
-                str(series.index[0]), str(series.index[-1]), str(tstep) + freq[tcode],
-                len(series),  dattr['TSTYPE'], dattr['TFILL']
-                ]
-            columns = ['Start', 'Stop', 'Freq','Length', 'TSTYPE', 'TFILL']
-            for x in columns_to_add:
-                if x in dattr:
-                    data.append(dattr[x])
-                    columns.append(x)
+    #@njit 
+    @staticmethod
+    def _splitdate(x):
+        year = int(x >> 14)
+        month = int(x >> 10 & 0xF)
+        day = int(x >> 5 & 0x1F)
+        hour = int(x & 0x1F)
+        return WDMReader.correct_date(year, month, day, hour, 0,0)
 
-            summary.append(data)
-            summaryindx.append(dsname[11:])
+    #@njit 
+    @staticmethod
+    def _splitcontrol(x):
+        nval = x >> 16
+        ltstep = x >> 10 & 0x3f 
+        ltcode = x >> 7 & 0x7
+        comp = x >> 5 & 0x3
+        qual  = x & 0x1f
+        return nval, ltstep, ltcode, comp, qual
 
-        dfsummary = pd.DataFrame(summary, index=summaryindx, columns=columns)
-        store.put('TIMESERIES/SUMMARY',dfsummary, format='t', data_columns=True)
-    return dfsummary
+    #@njit 
+    @staticmethod
+    def _splitposition(x):
+        return((x>>9) - 1, (x&0x1FF) - 1) #args: record, offset
 
-@njit 
-def _splitdate(x):
-    year = int(x >> 14)
-    month = int(x >> 10 & 0xF)
-    day = int(x >> 5 & 0x1F)
-    hour = int(x & 0x1F)
-    return correct_date(year, month, day, hour, 0,0)
+    #@njit 
+    @staticmethod
+    def _inttostr(i):
+        return chr(i & 0xFF) + chr(i>>8 & 0xFF) + chr(i>>16 & 0xFF) + chr(i>>24 & 0xFF)
 
-@njit 
-def _splitcontrol(x):
-    nval = x >> 16
-    ltstep = x >> 10 & 0x3f 
-    ltcode = x >> 7 & 0x7
-    comp = x >> 5 & 0x3
-    qual  = x & 0x1f
-    return nval, ltstep, ltcode, comp, qual
+    #@njit 
+    @staticmethod
+    def bits_to_date(x):
+        year = x >> 26
+        month = x >> 22 & 0xf
+        day = x >> 17 & 0x1f
+        hour = x >> 12 & 0x1f
+        minute = x >> 6 & 0x3f
+        second = x & 0x3f
+        return year, month, day, hour, minute, second
 
-@njit 
-def _splitposition(x):
-    return((x>>9) - 1, (x&0x1FF) - 1) #args: record, offset
+    #@njit 
+    @staticmethod
+    def date_to_bits(year, month, day, hour, minute, second):
+        x = year << 26 | month << 22 | day << 17 | hour << 12 | minute << 6 | second 
+        return x
 
-@njit 
-def _inttostr(i):
-    return chr(i & 0xFF) + chr(i>>8 & 0xFF) + chr(i>>16 & 0xFF) + chr(i>>24 & 0xFF)
+    #@njit 
+    @staticmethod
+    def increment_date(date, timecode, timestep):
+        year, month, day, hour, minute, second = WDMReader.bits_to_date(date)
+        
+        if timecode == 7: year += 100 * timestep
+        elif timecode == 6 : year += timestep
+        elif timecode == 5 : month += timestep
+        elif timecode == 4 : day += timestep
+        elif timecode == 3 : hour += timestep
+        elif timecode == 2 : minute += timestep
+        elif timecode == 1 : second += timestep
 
-@njit 
-def bits_to_date(x):
-    year = x >> 26
-    month = x >> 22 & 0xf
-    day = x >> 17 & 0x1f
-    hour = x >> 12 & 0x1f
-    minute = x >> 6 & 0x3f
-    second = x & 0x3f
-    return year, month, day, hour, minute, second
+        return WDMReader.correct_date(year, month, day, hour, minute, second)
 
-@njit 
-def date_to_bits(year, month, day, hour, minute, second):
-    x = year << 26 | month << 22 | day << 17 | hour << 12 | minute << 6 | second 
-    return x
+    #@njit 
+    @staticmethod
+    def correct_date(year, month, day, hour, minute, second):
+        while second >= 60:
+            second -= 60
+            minute += 1
+        while minute >= 60:
+            minute -= 60
+            hour += 1
+        while hour >= 24:
+            hour -= 24
+            day += 1
+        while day > WDMReader._days_in_month(year, month):
+            day -= WDMReader._days_in_month(year, month)
+            month += 1
+        while month > 12:
+            month -= 12
+            year += 1
+        return WDMReader.date_to_bits(year, month, day, hour, minute, second)
+        
+    #@njit 
+    @staticmethod
+    def _days_in_month(year, month):
+        if month > 12: month %= 12
+        
+        if month in (1,3,5,7,8,10,12):
+            return 31
+        elif month in (4,6,9,11):
+            return 30
+        elif month == 2:
+            if WDMReader._is_leapyear(year): return 29
+            else: return 28
 
-@njit 
-def increment_date(date, timecode, timestep):
-    year, month, day, hour, minute, second = bits_to_date(date)
-    
-    if timecode == 7: year += 100 * timestep
-    elif timecode == 6 : year += timestep
-    elif timecode == 5 : month += timestep
-    elif timecode == 4 : day += timestep
-    elif timecode == 3 : hour += timestep
-    elif timecode == 2 : minute += timestep
-    elif timecode == 1 : second += timestep
+    #@njit 
+    @staticmethod
+    def _is_leapyear(year):
+        if year % 400 == 0:
+            return True
+        if year % 100 == 0:
+            return False
+        if year % 4 == 0:
+            return True
+        else:
+            return False
 
-    return correct_date(year, month, day, hour, minute, second)
+    #@njit
+    def _process_groups(self, iarray, farray, records, offsets, tgroup):
+        date_array = [0] #need initialize with a type for numba
+        value_array = [0.0]
 
-@njit 
-def correct_date(year, month, day, hour, minute, second):
-    while second >= 60:
-        second -= 60
-        minute += 1
-    while minute >= 60:
-        minute -= 60
-        hour += 1
-    while hour >= 24:
-        hour -= 24
-        day += 1
-    while day > _days_in_month(year, month):
-        day -= _days_in_month(year, month)
-        month += 1
-    while month > 12:
-        month -= 12
-        year += 1
-    return date_to_bits(year, month, day, hour, minute, second)
-    
-@njit 
-def _days_in_month(year, month):
-    if month > 12: month %= 12
-    
-    if month in (1,3,5,7,8,10,12):
-        return 31
-    elif month in (4,6,9,11):
-        return 30
-    elif month == 2:
-        if _is_leapyear(year): return 29
-        else: return 28
+        for i in range(0,len(records)):
+            record = records[i]
+            offset = offsets[i]
+            index = record * 512 + offset
+            pscfwr = iarray[record * 512 + 3] #should be 0 for last record in timeseries 
+            current_date = WDMReader._splitdate(iarray[index].item())
+            group_enddate = WDMReader.increment_date(current_date, tgroup, 1)
+            offset +=1
+            index +=1
 
-@njit 
-def _is_leapyear(year):
-    if year % 400 == 0:
-        return True
-    if year % 100 == 0:
-        return False
-    if year % 4 == 0:
-        return True
-    else:
-        return False
+            while current_date < group_enddate:
+                nval, ltstep, ltcode, comp, qual = WDMReader._splitcontrol(iarray[index])  
+                #compressed - only has single value which applies to full range
+                if comp == 1:
+                    for i in range(0, nval, 1):
+                        current_date = WDMReader.increment_date(current_date, ltcode, ltstep.item()) 
+                        date_array.append(current_date)
+                        value_array.append(farray[index + 1])
+                    index += 2
+                    offset +=2
+                else:
+                    for i in range(0, nval, 1):
+                        current_date = WDMReader.increment_date(current_date, ltcode, ltstep.item()) 
+                        date_array.append(current_date)
+                        value_array.append(farray[index + 1 + i])
+                    index += 1 + nval
+                    offset +=1 + nval
+                
+                if offset >= 512:
+                    offset = 4
+                    index = (pscfwr - 1) * 512 + offset
+                    record = pscfwr
+                    pscfwr = iarray[(record - 1) * 512 + 3] #should be 0 for last record in timeseries
 
-@njit
-def _process_groups(iarray, farray, records, offsets, tgroup):
-    date_array = [0] #need initialize with a type for numba
-    value_array = [0.0]
+        date_array = date_array[1:]
+        value_array = value_array[1:]
 
-    for i in range(0,len(records)):
-        record = records[i]
-        offset = offsets[i]
-        index = record * 512 + offset
-        pscfwr = iarray[record * 512 + 3] #should be 0 for last record in timeseries 
-        current_date = _splitdate(iarray[index])
-        group_enddate = increment_date(current_date, tgroup, 1)
-        offset +=1
-        index +=1
+        return date_array, value_array
 
-        while current_date < group_enddate:
-            nval, ltstep, ltcode, comp, qual = _splitcontrol(iarray[index])  
-            #compressed - only has single value which applies to full range
-            if comp == 1:
-                for i in range(0, nval, 1):
-                    current_date = increment_date(current_date, ltcode, ltstep) 
-                    date_array.append(current_date)
-                    value_array.append(farray[index + 1])
-                index += 2
-                offset +=2
-            else:
-                for i in range(0, nval, 1):
-                    current_date = increment_date(current_date, ltcode, ltstep) 
-                    date_array.append(current_date)
-                    value_array.append(farray[index + 1 + i])
-                index += 1 + nval
-                offset +=1 + nval
-            
-            if offset >= 512:
-                offset = 4
-                index = (pscfwr - 1) * 512 + offset
-                record = pscfwr
-                pscfwr = iarray[(record - 1) * 512 + 3] #should be 0 for last record in timeseries
+reader = WDMReader("../WDM/rpo772.wdm")
+#reader.readWDM("../WDM/rpo772.wdm", "rpo772.h5", True)
+def func():
+    reader.readWDM("../WDM/rpo772.wdm", "rpo772.h5", True)
+#     reader = WDMReader("../WDM/rpo772.wdm")
+#     reader.readWDM("../WDM/rpo772.wdm", "rpo772.h5", True)
+#     #reader.readWDM("../WDM/test.wdm", "test.h5")
+#     #reader.readWDM("../WDM/2_RPO_SWMM48LINKS2017_CBOD.wdm", "2_RPO_SWMM48LINKS2017_CBOD.h5")
 
-    date_array = date_array[1:]
-    value_array = value_array[1:]
+execution_time = timeit.timeit(func, number=1)
 
-    return date_array, value_array
+print(execution_time)
