@@ -18,6 +18,9 @@ class WDMReader:
     freq ={}
 
     def __init__(self, wdmfile):
+        self.datasets ={}
+        self.summary = []
+        self.summaryindx = []
         self.wdmfile = wdmfile
         # look up attributes NAME, data type (Integer; Real; String) and data length by attribute number
         self.attrinfo = {1:('TSTYPE','S',4),     2:('STAID','S',16),    11:('DAREA','R',1),
@@ -33,7 +36,13 @@ class WDMReader:
         self.freq = {7:'100YS', 6:'YS', 5:'MS', 4:'D', 3:'H', 2:'min', 1:'S'}   # pandas date_range() frequency by TCODE, TGROUP
 
 
-    def readWDM(self, wdmfile, hdffile, compress_output=True):
+    def readWDM(self, wdmfile): #, hdffile, compress_output=True):
+
+        # clear content
+        self.datasets = {}
+        self.summary = []
+        self.summaryindx = []
+
         iarray = np.fromfile(wdmfile, dtype=np.int32)
         farray = np.fromfile(wdmfile, dtype=np.float32)
 
@@ -49,114 +58,130 @@ class WDMReader:
         if len(dsnlist) != ntimeseries:
             raise RuntimeError (f'Wrong number of Time Series Records found expecting:{ntimeseries} found:{len(dsnlist)}')
 
-        with pd.HDFStore(hdffile) as store:
-            summary = []
-            summaryindx = []
+        #with pd.HDFStore(hdffile) as store:
+        #summary = []
+        #summaryindx = []
 
-            # check to see which extra attributes are on each dsn
-            columns_to_add = []
-            search = ['STAID', 'STNAM', 'SCENARIO', 'CONSTITUENT', 'LOCATION']
-            for att in search:
-                found_in_all = True
-                for index in dsnlist:
-                    dattr = {}
-                    psa = iarray[index + 9]
-                    if psa > 0:
-                        sacnt = iarray[index + psa - 1]
-                    for i in range(psa + 1, psa + 1 + 2 * sacnt, 2):
-                        id = iarray[index + i]
-                        ptr = iarray[index + i + 1] - 1 + index
-                        if id not in self.attrinfo:
-                            continue
-                        name, atype, length = self.attrinfo[id]
-                        if atype == 'I':
-                            dattr[name] = iarray[ptr]
-                        elif atype == 'R':
-                            dattr[name] = farray[ptr]
-                        else:
-                            dattr[name] = ''.join([WDMReader._inttostr(iarray[k]) for k in range(ptr, ptr + length // 4)]).strip()
-                    if att not in dattr:
-                        found_in_all = False
-                if found_in_all:
-                    columns_to_add.append(att)
-
+        # check to see which extra attributes are on each dsn
+        columns_to_add = []
+        search = ['STAID', 'STNAM', 'SCENARIO', 'CONSTITUENT', 'LOCATION']
+        for att in search:
+            found_in_all = True
             for index in dsnlist:
-                # get layout information for TimeSeries Dataset frame
-                dsn   = iarray[index+4]
-                psa   = iarray[index+9]
+                dattr = {}
+                psa = iarray[index + 9]
                 if psa > 0:
-                    sacnt = iarray[index+psa-1]
-                pdat  = iarray[index+10]
-                pdatv = iarray[index+11]
-                frepos = iarray[index+pdat]
-
-                print(f'{dsn} reading from wdm')
-                # get attributes
-                dattr = {'TSBDY':1, 'TSBHR':1, 'TSBMO':1, 'TSBYR':1900, 'TFILL':-999.}   # preset defaults
-                for i in range(psa+1, psa+1 + 2*sacnt, 2):
+                    sacnt = iarray[index + psa - 1]
+                for i in range(psa + 1, psa + 1 + 2 * sacnt, 2):
                     id = iarray[index + i]
                     ptr = iarray[index + i + 1] - 1 + index
                     if id not in self.attrinfo:
-                        # print('PROGRAM ERROR: ATTRIBUTE INDEX not found', id, 'Attribute pointer', iarray[index + i+1])
                         continue
-
                     name, atype, length = self.attrinfo[id]
                     if atype == 'I':
                         dattr[name] = iarray[ptr]
                     elif atype == 'R':
                         dattr[name] = farray[ptr]
                     else:
-                        dattr[name] = ''.join([WDMReader._inttostr(iarray[k]) for k in range(ptr, ptr + length//4)]).strip()
+                        dattr[name] = ''.join([WDMReader._inttostr(iarray[k]) for k in range(ptr, ptr + length // 4)]).strip()
+                if att not in dattr:
+                    found_in_all = False
+            if found_in_all:
+                columns_to_add.append(att)
 
-                # Get timeseries timebase data
-                records = [] 
-                offsets = []
-                for i in range(pdat+1, pdatv-1):
-                    a = iarray[index+i]
-                    if a != 0:
-                        record, offset = WDMReader._splitposition(a)
-                        records.append(record)
-                        offsets.append(offset)
-                if len(records) == 0:
-                    continue   
+        for index in dsnlist:
+            # get layout information for TimeSeries Dataset frame
+            dsn   = iarray[index+4]
+            psa   = iarray[index+9]
+            if psa > 0:
+                sacnt = iarray[index+psa-1]
+            pdat  = iarray[index+10]
+            pdatv = iarray[index+11]
+            frepos = iarray[index+pdat]
 
-                # calculate number of data points in each group, tindex is final index for storage
-                tgroup = dattr['TGROUP']
-                tstep  = dattr['TSSTEP']
-                tcode  = dattr['TCODE']
+            print(f'{dsn} reading from wdm')
+            # get attributes
+            dattr = {'TSBDY':1, 'TSBHR':1, 'TSBMO':1, 'TSBYR':1900, 'TFILL':-999.}   # preset defaults
+            for i in range(psa+1, psa+1 + 2*sacnt, 2):
+                id = iarray[index + i]
+                ptr = iarray[index + i + 1] - 1 + index
+                if id not in self.attrinfo:
+                    # print('PROGRAM ERROR: ATTRIBUTE INDEX not found', id, 'Attribute pointer', iarray[index + i+1])
+                    continue
 
-                records = np.asarray(records)
-                offsets = np.asarray(offsets)
-                dates, values = self._process_groups(iarray, farray, records, offsets, tgroup)
-                series = pd.Series(values, index=dates)
-                index = series.index.to_series()
-                series.index = index.apply(lambda x: datetime.datetime(*WDMReader.bits_to_date(x)))
+                name, atype, length = self.attrinfo[id]
+                if atype == 'I':
+                    dattr[name] = iarray[ptr]
+                elif atype == 'R':
+                    dattr[name] = farray[ptr]
+                else:
+                    dattr[name] = ''.join([WDMReader._inttostr(iarray[k]) for k in range(ptr, ptr + length//4)]).strip()
 
+            # Get timeseries timebase data
+            records = [] 
+            offsets = []
+            for i in range(pdat+1, pdatv-1):
+                a = iarray[index+i]
+                if a != 0:
+                    record, offset = WDMReader._splitposition(a)
+                    records.append(record)
+                    offsets.append(offset)
+            if len(records) == 0:
+                continue   
+
+            # calculate number of data points in each group, tindex is final index for storage
+            tgroup = dattr['TGROUP']
+            tstep  = dattr['TSSTEP']
+            tcode  = dattr['TCODE']
+
+            records = np.asarray(records)
+            offsets = np.asarray(offsets)
+            # process groups in the time series
+            dates, values = self._process_groups(iarray, farray, records, offsets, tgroup)
+            series = pd.Series(values, index=dates)
+            index = series.index.to_series()
+            series.index = index.apply(lambda x: datetime.datetime(*WDMReader.bits_to_date(x)))
+
+            self.datasets[dsn] = series
+
+            dsname = f'TIMESERIES/TS{dsn:03d}'
+            # if compress_output:
+            #     series.to_hdf(store, dsname, complib='blosc', complevel=9)  
+            # else:
+            #     series.to_hdf(store, dsname, format='t', data_columns=True)
+
+            data = [
+                str(series.index[0]), str(series.index[-1]), str(tstep) + self.freq[tcode],
+                len(series),  dattr['TSTYPE'], dattr['TFILL']
+                ]
+            columns = ['Start', 'Stop', 'Freq','Length', 'TSTYPE', 'TFILL']
+            for x in columns_to_add:
+                if x in dattr:
+                    data.append(dattr[x])
+                    columns.append(x)
+
+            self.summary.append(data)
+            self.summaryindx.append(dsname[11:])
+
+            #dfsummary = pd.DataFrame(summary, index=summaryindx, columns=columns)
+            #store.put('TIMESERIES/SUMMARY',dfsummary, format='t', data_columns=True)
+        #return dfsummary
+
+# export data to HD5 file
+    def WriteHD5(self, hdffile, compress_output=True):
+        with pd.HDFStore(hdffile) as store:
+
+            for dsn, series in self.datasets.items():
                 dsname = f'TIMESERIES/TS{dsn:03d}'
                 if compress_output:
                     series.to_hdf(store, dsname, complib='blosc', complevel=9)  
                 else:
                     series.to_hdf(store, dsname, format='t', data_columns=True)
 
-                data = [
-                    str(series.index[0]), str(series.index[-1]), str(tstep) + self.freq[tcode],
-                    len(series),  dattr['TSTYPE'], dattr['TFILL']
-                    ]
-                columns = ['Start', 'Stop', 'Freq','Length', 'TSTYPE', 'TFILL']
-                for x in columns_to_add:
-                    if x in dattr:
-                        data.append(dattr[x])
-                        columns.append(x)
 
-                summary.append(data)
-                summaryindx.append(dsname[11:])
-
-            dfsummary = pd.DataFrame(summary, index=summaryindx, columns=columns)
+            dfsummary = pd.DataFrame(self.summary, index=self.summaryindx, columns=columns)
             store.put('TIMESERIES/SUMMARY',dfsummary, format='t', data_columns=True)
-        return dfsummary
 
-    def WriteHD5(self, hdffile):
-        pass
 
     #@njit 
     @staticmethod
@@ -311,7 +336,7 @@ class WDMReader:
 reader = WDMReader("../WDM/rpo772.wdm")
 #reader.readWDM("../WDM/rpo772.wdm", "rpo772.h5", True)
 def func():
-    reader.readWDM("../WDM/rpo772.wdm", "rpo772.h5", True)
+    reader.readWDM("../WDM/rpo772.wdm") #, "rpo772.h5", True)
 #     reader = WDMReader("../WDM/rpo772.wdm")
 #     reader.readWDM("../WDM/rpo772.wdm", "rpo772.h5", True)
 #     #reader.readWDM("../WDM/test.wdm", "test.h5")
