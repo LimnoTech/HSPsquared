@@ -19,9 +19,9 @@ class WDMReader:
 
     def __init__(self, wdmfile):
         self.datasets ={}
-        self.summary = []
-        self.summaryindx = []
+        self.dfsummary = pd.DataFrame()
         self.wdmfile = wdmfile
+
         # look up attributes NAME, data type (Integer; Real; String) and data length by attribute number
         self.attrinfo = {1:('TSTYPE','S',4),     2:('STAID','S',16),    11:('DAREA','R',1),
                 17:('TCODE','I',1),     27:('TSBYR','I',1),     28:('TSBMO','I',1),
@@ -36,15 +36,14 @@ class WDMReader:
         self.freq = {7:'100YS', 6:'YS', 5:'MS', 4:'D', 3:'H', 2:'min', 1:'S'}   # pandas date_range() frequency by TCODE, TGROUP
 
 
-    def readWDM(self, wdmfile): #, hdffile, compress_output=True):
+    def readWDM(self): #, hdffile, compress_output=True):
 
         # clear content
         self.datasets = {}
-        self.summary = []
-        self.summaryindx = []
+        self.dfsummary = pd.DataFrame()
 
-        iarray = np.fromfile(wdmfile, dtype=np.int32)
-        farray = np.fromfile(wdmfile, dtype=np.float32)
+        iarray = np.fromfile(self.wdmfile, dtype=np.int32)
+        farray = np.fromfile(self.wdmfile, dtype=np.float32)
 
         if iarray[0] != -998:
             raise ValueError ('Provided file does not match WDM format. First int32 should be -998.')
@@ -59,8 +58,8 @@ class WDMReader:
             raise RuntimeError (f'Wrong number of Time Series Records found expecting:{ntimeseries} found:{len(dsnlist)}')
 
         #with pd.HDFStore(hdffile) as store:
-        #summary = []
-        #summaryindx = []
+        summary = []
+        summaryindx = []
 
         # check to see which extra attributes are on each dsn
         columns_to_add = []
@@ -160,28 +159,26 @@ class WDMReader:
                     data.append(dattr[x])
                     columns.append(x)
 
-            self.summary.append(data)
-            self.summaryindx.append(dsname[11:])
+            summary.append(data)
+            summaryindx.append(dsname[11:])
 
-            #dfsummary = pd.DataFrame(summary, index=summaryindx, columns=columns)
+            self.dfsummary = pd.DataFrame(summary, index=summaryindx, columns=columns)
             #store.put('TIMESERIES/SUMMARY',dfsummary, format='t', data_columns=True)
         #return dfsummary
 
 # export data to HD5 file
     def WriteHD5(self, hdffile, compress_output=True):
-        with pd.HDFStore(hdffile) as store:
+        if len(self.datasets) >0:
+            with pd.HDFStore(hdffile) as store:
 
-            for dsn, series in self.datasets.items():
-                dsname = f'TIMESERIES/TS{dsn:03d}'
-                if compress_output:
-                    series.to_hdf(store, dsname, complib='blosc', complevel=9)  
-                else:
-                    series.to_hdf(store, dsname, format='t', data_columns=True)
+                for dsn, series in self.datasets.items():
+                    dsname = f'TIMESERIES/TS{dsn:03d}'
+                    if compress_output:
+                        series.to_hdf(store, dsname, complib='blosc', complevel=9)  
+                    else:
+                        series.to_hdf(store, dsname, format='t', data_columns=True)
 
-
-            dfsummary = pd.DataFrame(self.summary, index=self.summaryindx, columns=columns)
-            store.put('TIMESERIES/SUMMARY',dfsummary, format='t', data_columns=True)
-
+                store.put('TIMESERIES/SUMMARY', self.dfsummary, format='t', data_columns=True)
 
     #@njit 
     @staticmethod
@@ -336,7 +333,8 @@ class WDMReader:
 reader = WDMReader("../WDM/rpo772.wdm")
 #reader.readWDM("../WDM/rpo772.wdm", "rpo772.h5", True)
 def func():
-    reader.readWDM("../WDM/rpo772.wdm") #, "rpo772.h5", True)
+    reader.readWDM()
+    reader.WriteHD5("rpo772.h5", True)
 #     reader = WDMReader("../WDM/rpo772.wdm")
 #     reader.readWDM("../WDM/rpo772.wdm", "rpo772.h5", True)
 #     #reader.readWDM("../WDM/test.wdm", "test.h5")
